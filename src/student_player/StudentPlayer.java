@@ -3,17 +3,14 @@ package student_player;
 import boardgame.Move;
 import Saboteur.SaboteurPlayer;
 import Saboteur.cardClasses.SaboteurCard;
-import Saboteur.cardClasses.SaboteurMap;
-import Saboteur.cardClasses.SaboteurTile;
 import java.util.ArrayList;
-import java.util.concurrent.ConcurrentHashMap;
 import Saboteur.SaboteurBoardState;
 import Saboteur.SaboteurMove;
-import static Saboteur.SaboteurBoardState.*;
 
 /** A player file submitted by a student. */
 public class StudentPlayer extends SaboteurPlayer {
-
+  
+    static boolean isFirstMove;
     /**
      * You must modify this constructor to return your student number. This is
      * important, because this is what the code that runs the competition uses to
@@ -21,6 +18,8 @@ public class StudentPlayer extends SaboteurPlayer {
      */
     public StudentPlayer() {
         super("260781081");
+        //260779330
+        isFirstMove = true;
     }
 
     /**
@@ -28,23 +27,21 @@ public class StudentPlayer extends SaboteurPlayer {
      * object contains the current state of the game, which your agent must use to
      * make decisions.
      */
-    boolean isFirstMove = true;
-    public Move chooseMove(SaboteurBoardState boardState) {
-    
+    public Move chooseMove(SaboteurBoardState boardState) {    
       //check if it is the first move
-      if (boardState.firstPlayer() == player_id && isFirstMove) {
+      if (isFirstMove) {
         MyTools.setup(boardState);
         isFirstMove = false;
       }
       //deduce the opponent's move
-      MyTools.identifyOpponentMove(boardState);
+      SaboteurMove opponentMove = MyTools.identifyOpponentMove(boardState);
       
-      //steal the object.
-      MyTools.stealing(boardState);
+      int[][] theBoardMap = boardState.getHiddenIntBoard();
+      
+      double current_heuristic = MyTools.assignMoveValue(theBoardMap);
       
       //get all legal moves here.
       ArrayList<SaboteurMove> allLegalMoves = boardState.getAllLegalMoves();
-      SaboteurMove myMove = null;
       
       //check what kind of moves we can process.
       ArrayList<SaboteurMove> tileMoves = new ArrayList<SaboteurMove>();
@@ -53,20 +50,7 @@ public class StudentPlayer extends SaboteurPlayer {
       ArrayList<SaboteurMove> bonusMoves = new ArrayList<SaboteurMove>();
       ArrayList<SaboteurMove> malusMoves = new ArrayList<SaboteurMove>();
       ArrayList<SaboteurMove> dropMoves = new ArrayList<SaboteurMove>();
-      
-      //check the end points of existing connected path.
-      MyTools.checkExistingConnectedPath(boardState);
-      
-      //specify the current goal object.
-      int[] goal = MyTools.currentObjective();
-      System.out.println("current goal: " + goal[0] + ", " + goal[1]);
-      
-      System.out.println("AI cards: ");
-      ArrayList<SaboteurCard> cards = boardState.getCurrentPlayerCards();
-      
-      for (int i = 0; i < cards.size(); i++) {
-        System.out.println(cards.get(i).getName());
-      }
+
       
       for (int i = 0; i < allLegalMoves.size(); i++) {
         if (allLegalMoves.get(i).toPrettyString().contains("Tile")) {
@@ -89,49 +73,67 @@ public class StudentPlayer extends SaboteurPlayer {
         }
       }
       
-      //prioritize the use of map cards.
+      SaboteurMove myMove = null;
+      
+     //steal the object if possible.
+      myMove = MyTools.stealing(boardState, tileMoves, opponentMove);
+      if (myMove != null) {
+        return myMove;
+      }
+      
+      //prioritize the use of map cards, we are constraint of using destroy card.
       if (mapMoves.size() > 1 && !MyTools.nuggetKnown()) {
         for (int i = 0; i < mapMoves.size(); i++) {
           int[] mapPosition = mapMoves.get(i).getPosPlayed(); // Y X
           int[] objectPosition = MyTools.currentObjective();  // Y X
           if (mapPosition[0] == objectPosition[0] && mapPosition[1] == objectPosition[1]) {
             myMove = mapMoves.get(i);
-            System.out.println("playing map");
             return myMove;
           }
         }
       }
-      //we don't use destroy for this game.
-      else if (!destroyMoves.isEmpty()) {
-        
-      }
-      else if (!bonusMoves.isEmpty() && boardState.getNbMalus(player_id) > 0) {
+      else if (!bonusMoves.isEmpty()) {
         myMove = bonusMoves.get(0);
         return myMove;
       }
-      else if (malusMoves.size() > 0) {
+      else if (!malusMoves.isEmpty()) {
         myMove = malusMoves.get(0);
         return myMove;
       }
       else {
-        if (currentHeuristic <= 4) {
-          System.out.println("relax the heuristic");
-          currentHeuristic++;
+        if (current_heuristic <= 4) {
+          current_heuristic++;
         }
-        //play the tile card with the smallest heuristic.
+        //play the tile card with the smallest assignedMoveValue.
         for (int i = 0; i < tileMoves.size(); i++) {
-          double tmp = myMove.simulateMove(bitMap, tileMoves.get(i));
-          if (tmp < currentHeuristic) {
-            currentHeuristic = tmp;
+          double tmp = MyTools.AnalyseMoveValue(theBoardMap, tileMoves.get(i));
+          if (tmp < current_heuristic) {
+            current_heuristic = tmp;
             myMove = tileMoves.get(i);
-            return myMove;
           }
         }
       }
       //if AI does not choose any move, drop the move.
+      ArrayList<SaboteurCard> cards = boardState.getCurrentPlayerCards();
       if (myMove == null) {
-        myMove = dropMoves.get(0);
+        for (int i = 0; i < cards.size(); i++) {
+          if ((cards.get(i).getName().contains("1")&&!cards.get(i).getName().contains("0"))
+              ||cards.get(i).getName().contains("2")
+              ||cards.get(i).getName().contains("3")
+              ||cards.get(i).getName().contains("4")
+              ||cards.get(i).getName().contains("11")
+              ||cards.get(i).getName().contains("12")
+              ||cards.get(i).getName().contains("13")
+              ||cards.get(i).getName().contains("14")
+              ||cards.get(i).getName().contains("15")) {
+            myMove =  dropMoves.get(i);
+            break;
+          } else {
+            myMove = dropMoves.get(0);
+          }
+        }
       }
+      
       
       MyTools.storeBoard(boardState, myMove);
       
